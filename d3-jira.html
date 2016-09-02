@@ -1,0 +1,222 @@
+<html>
+<head>
+  <title>Active Issues for the Last Month</title>
+  <script src="https://d3js.org/d3.v4.min.js"></script>
+</head>
+<body style="background-color: #222222">
+
+  <img id="spinner" src="spinner.gif"></img>
+
+  <div id="main" style="display: none">
+    <h1>Active Issues for the Last Month</h1>
+
+    <div id="projects"></div>
+    <br>
+    <div>Mode: <span id="mode" style="padding: 10px">Table</span></div>
+    <br>
+
+    <table id="projtable">
+      <thead/>
+      <tbody/>
+    </table>
+
+    <svg id="projvisual" width="1200" height="2000" style="display: none"></svg>
+  </div>
+
+  <script type="text/javascript">
+
+let allData = null
+let projectsShowHide = {}
+let modeVisual = false
+
+function renderTopBar(projects) {
+  for (let p of projects) {
+    projectsShowHide[p] = true
+  }
+
+  let toggleProject = (project) => {
+    projectsShowHide[project] = !projectsShowHide[project]
+
+    let color = '#888888'
+    if (projectsShowHide[project]) {
+      color = '#008800'
+    }
+
+    d3.select('#project' + project)
+      .transition().duration(200)
+      .style('color', '#00aa00')
+      .transition().duration(200)
+      .style('color', color)
+
+    let shownProjects = d3.keys(projectsShowHide).filter((i) => projectsShowHide[i])
+    let shownIssues = allData.issues.filter((i) => projectsShowHide[i.project])
+    renderIssues(shownProjects, shownIssues)
+  }
+
+  d3.select('#projects')
+    .selectAll('span')
+    .data(projects)
+    .enter()
+      .append('span')
+        .attr('id', (project) => 'project' + project)
+        .style('padding', '10px')
+        .style('color', '#008800')
+        .style('background-color', '#dddddd')
+        .style('cursor', 'pointer')
+        .text((d) => d)
+        .on('click', toggleProject)
+}
+
+function colorStatus(d) {
+  if (d === 'Done') {
+    return '#008800'
+  } else if (d === 'To Do' || d === 'Open') {
+    return '#aaaaaa'
+  } else if (d === 'In Progress') {
+    return '#000088'
+  } else if (d === 'In Review' || d === 'Ready for Review') {
+    return '#888800'
+  } else {
+    return '#008800'
+  }
+}
+
+function renderIssuesTable(issues) {
+  d3.select('#projtable')
+    .select('thead')
+    .selectAll('th')
+    .data(['Project', 'Issue', 'Status'])
+    .enter()
+      .append('th')
+        .style('text-align', 'left')
+        .text((d) => d)
+
+  let tr = d3.select('#projtable')
+    .select('tbody')
+    .selectAll('tr')
+    .data(issues, (d) => d.key)
+
+  tr.enter()
+    .append('tr')
+    .selectAll('td')
+    .data((row) => [row.project, row.key, row.status])
+    .enter()
+      .append('td')
+        .text((d) => d)
+        .style('color', colorStatus)
+
+  tr.exit()
+    .remove()
+}
+
+function renderIssuesVisual(projects, issues) {
+  let calcProjectX = (d) => 80 + projects.indexOf(d) * 80
+  let scaleFont = (d) => {
+    if (d.length > 4) {
+      return Math.max(0.1, (20-d.length)/20.0) * 15
+    }
+    return 15
+  }
+
+  let labels = d3.select('#projvisual')
+    .selectAll('text')
+    .data(projects, (d) => d)
+    .attr('x', calcProjectX)
+
+  labels.enter()
+    .append('text')
+      .attr('x', calcProjectX)
+      .attr('y', 40)
+      .attr('font-size', scaleFont)
+      .attr('text-anchor', 'middle')
+      .text((d) => d)
+
+  labels.exit()
+    .remove()
+
+  let calcPillX = (d) => 70 + projects.indexOf(d.project) * 80
+
+  // O(n^2)
+  let calcPillY = (d) => {
+    let y = 0
+
+    for (let issue of issues) {
+      if (issue.project === d.project) {
+        y += 40
+      }
+      if (issue.key === d.key) {
+        return 20 + y
+      }
+    }
+
+    return 20 + y
+  }
+
+  let colorPill = (d) => colorStatus(d.status)
+
+  let pills = d3.select('#projvisual')
+    .selectAll('rect')
+    .data(issues, (d) => d.key)
+    .attr('x', calcPillX)
+
+  pills.enter()
+    .append('rect')
+      .attr('rx', 8)
+      .attr('ry', 8)
+      .attr('x', calcPillX)
+      .attr('y', calcPillY)
+      .attr('width', 18)
+      .attr('height', 26)
+      .style('fill', colorPill)
+      .style('opacity', 0)
+      .transition().duration(500)
+      .style('opacity', 1)
+
+  pills.exit()
+    .transition().duration(500)
+    .style('opacity', 0)
+    .remove()
+}
+
+function renderIssues(projects, issues) {
+  renderIssuesTable(issues)
+  renderIssuesVisual(projects, issues)
+}
+
+function toggleMode() {
+  modeVisual = !modeVisual
+  if (modeVisual) {
+    d3.select('#mode').text('Visual')
+    d3.select('#projtable').style('display', 'none')
+    d3.select('#projvisual').style('display', 'initial')
+  } else {
+    d3.select('#mode').text('Table')
+    d3.select('#projtable').style('display', 'initial')
+    d3.select('#projvisual').style('display', 'none')
+  }
+}
+
+d3.json('http://localhost:9006', (results) => {
+  d3.select('#spinner')
+    .style('display', 'none')
+
+  d3.select('#main')
+    .style('display', 'initial')
+
+  d3.select('body')
+    .style('font-family', 'Arial')
+    .style('color', '#006600')
+    .transition().duration(1000)
+    .style('background-color', '#eff5f5')
+
+  d3.select('#mode')
+    .style('cursor', 'pointer')
+    .on('click', toggleMode)
+
+  allData = results
+  renderTopBar(results.projects)
+  renderIssues(results.projects, results.issues)
+})
+  </script>
+</body>
+</html>
